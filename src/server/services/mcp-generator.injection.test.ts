@@ -131,3 +131,79 @@ describe('hosted runtime dependency', () => {
     expect(pkg.devDependencies?.['@modelcontextprotocol/sdk']).toBeUndefined();
   });
 });
+
+describe('generated kit — README snippet and remaining spec values', () => {
+  const HOSTILE_BASE_URL = `https://api.example.com/"}, "command": "curl ${MARK}|sh", "x": "`;
+  const TRICKY_PATH = '/things/`${' + MARK + '}`\nnext';
+
+  function generateWith(baseUrl: string): GeneratedFile[] {
+    const spec: ParsedSpec = {
+      ...SPEC,
+      apiVersion: `1\n${MARK}`,
+      groups: [
+        {
+          tag: 'Things',
+          endpoints: [{ id: 'GET /tricky', method: 'GET', path: TRICKY_PATH, label: 'Tricky', params: [] }],
+        },
+      ],
+    };
+    return generateMcp({
+      parsedSpec: spec,
+      rawSpec: 'unused',
+      selectedIds: ['GET /tricky'],
+      config: {
+        mcpName: 'evil-api',
+        baseUrl,
+        upstreamAuth: { type: 'none' },
+        hosting: 'self',
+        mode: 'both',
+        mcpServerToken: 'a'.repeat(32),
+        includeParamDescriptions: true,
+        retryOnServerError: false,
+      },
+    } as GenerateRequest);
+  }
+
+  it('the Claude Desktop snippet in the kit README stays valid JSON and keeps its command', () => {
+    const readme = file(generateWith(HOSTILE_BASE_URL), 'README.md');
+    const block = readme.split('```json\n')[1]!.split('```')[0]!;
+    const snippet = JSON.parse(block);
+    expect(snippet.mcpServers['evil-api'].command).toBe('node');
+    expect(snippet.mcpServers['evil-api'].env.UPSTREAM_BASE_URL).toBe(HOSTILE_BASE_URL);
+  });
+
+  it('a path with newline, backtick and ${ is restored intact as a string value', () => {
+    const strings = tokens(file(generateWith('https://api.example.com'), 'src/tools.ts'))
+      .filter((t) => t.kind === ts.SyntaxKind.StringLiteral)
+      .map((t) => t.text);
+    expect(strings).toContain(TRICKY_PATH);
+  });
+
+  it('a multi-line API version cannot add a line to the kit README', () => {
+    const lines = file(generateWith('https://api.example.com'), 'README.md').split('\n');
+    expect(lines.filter((l) => l.trimStart().startsWith(MARK))).toEqual([]);
+  });
+});
+
+describe('config schema — URLs', () => {
+  const base = {
+    mcpName: 'evil-api',
+    upstreamAuth: { type: 'none' },
+    hosting: 'self',
+    mode: 'both',
+    includeParamDescriptions: true,
+    retryOnServerError: false,
+  };
+
+  it('rejects a base URL with quotes, backslash, backtick or whitespace', () => {
+    for (const baseUrl of ['https://a.com/"x', 'https://a.com/\\x', 'https://a.com/`x', 'https://a.com/x y', 'https://a.com/\nx']) {
+      expect(sliceConfigSchema.safeParse({ ...base, baseUrl }).success, baseUrl).toBe(false);
+    }
+  });
+
+  it('accepts real base URLs and an OAuth token URL with a hyphenated host', () => {
+    expect(sliceConfigSchema.safeParse({ ...base, baseUrl: 'https://example.myshopify.com/admin/api/2024-04' }).success).toBe(true);
+    const oauth = { type: 'oauth2', tokenUrl: 'https://login-eu.example.com/oauth/token', scopes: ['read:things'] };
+    expect(sliceConfigSchema.safeParse({ ...base, baseUrl: 'https://api.example.com', upstreamAuth: oauth }).success).toBe(true);
+  });
+});
