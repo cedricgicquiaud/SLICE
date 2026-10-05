@@ -4,7 +4,7 @@
 
 [![Project Status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 [![CI](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml/badge.svg)](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE.md)
 [Case study](https://cedricgicquiaud.github.io/projets/slice/)
 
 ![Endpoint selection: tick what the agent may call](docs/screenshots/2-select.png)
@@ -71,4 +71,6 @@ Product specification: [docs/spec.md](docs/spec.md).
 
 ## License
 
-MIT
+[Functional Source License 1.1, MIT Future License](LICENSE.md): free to read, use internally, modify and
+redistribute for any purpose other than a competing commercial product or service. Each version becomes MIT two
+years after its release.
