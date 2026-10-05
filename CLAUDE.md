@@ -197,6 +197,6 @@ SLICE/
 
 ## Liens utiles
 
-- Spec produit complète : [SLICE.md](SLICE.md)
+- Spec produit complète : [docs/spec.md](docs/spec.md)
 - PRD validé : [.workflow/PRD.md](.workflow/PRD.md)
 - Règles projet : `.claude/rules/` (workflow FORGE retiré le 2026-08-27 ; circuit de développement : dépôt `AlanZien/pilot`)
