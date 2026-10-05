@@ -52,7 +52,7 @@ describe('generateMcp — logic files (07-4)', () => {
     const httpClient = files.get('src/http-client.ts');
     expect(httpClient).toBeDefined();
     expect(httpClient).toContain('process.env.UPSTREAM_BASE_URL');
-    expect(httpClient).toContain("'X-Shopify-Access-Token'");
+    expect(httpClient).toContain('"X-Shopify-Access-Token"');
     expect(httpClient).toContain('process.env.UPSTREAM_API_KEY');
   });
 
