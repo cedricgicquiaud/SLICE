@@ -25,7 +25,14 @@ Anything left unticked does not exist for the agent.
 ## Features
 
 - **Least privilege by construction** — the generated server exposes the selected endpoints only.
-- **Three input formats** — OpenAPI 3.0/3.1 as is; Swagger 2.0 and Postman v2.x converted automatically.
+- **Three input formats**, detected automatically:
+
+  | Format | Versions | Handling |
+  |---|---|---|
+  | OpenAPI | 3.0, 3.1 | Used as is |
+  | Swagger | 2.0 | Converted to OpenAPI 3.0 |
+  | Postman Collection | v2.x | Converted to OpenAPI 3.0 |
+
 - **Two delivery modes** — download the generated TypeScript server, or use a hosted URL to paste into the agent.
 - **Upstream authentication** — OAuth2 client credentials, bearer token, API key. In hosted mode the user's token
   is relayed, never stored.
@@ -45,16 +52,66 @@ pnpm dev        # http://localhost:5173
 
 ## Architecture
 
-TypeScript monolith: React 19 + Vite front end, Express back end serving both the UI and the API, generated code
-built on `@modelcontextprotocol/sdk`.
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![React 19](https://img.shields.io/badge/React_19-20232A?logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS_v4-06B6D4?logo=tailwindcss&logoColor=white)
+![Express 5](https://img.shields.io/badge/Express_5-000000?logo=express&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3E67B1?logo=zod&logoColor=white)
+![MCP SDK](https://img.shields.io/badge/MCP_SDK-1F1F1F)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+
+A single Express server serves the React UI and the API. Generated servers are rendered from Handlebars templates on
+top of `@modelcontextprotocol/sdk`.
+
+```mermaid
+flowchart LR
+    A[API description<br/>file or URL] --> B[Format detection<br/>and conversion]
+    B --> C[Parser<br/>isolated child process]
+    C --> D[Endpoint selection<br/>in the UI]
+    D --> E{Delivery}
+    E -->|download| F[Ready-to-run kit<br/>TypeScript + Docker]
+    E -->|hosted| G[Hosted MCP URL<br/>token relayed, never stored]
+```
 
 Key decisions:
 - **Isolated parsing.** Some specs exhaust memory. Parsing runs in a child process with a timeout, a memory cap and
   a concurrency limit: a malicious spec returns a clean error and the server stays up.
+- **Server-side re-parse.** The server never trusts the parsed spec sent back by the browser; it re-parses the raw
+  spec and filters the selection against its own result.
 - **Hosted mode over a desktop binary.** The first plan shipped an executable; unsigned binaries are blocked by
   macOS Gatekeeper. The hosted mode serves several agent sessions in parallel instead.
 - **External data is JSON-encoded in generated code.** Rule adopted after a review found two code-injection paths
   (token URL, OAuth scopes), both fixed.
+
+<details>
+<summary><strong>Project structure</strong></summary>
+
+```
+src/
+├── client/            React UI
+│   ├── screens/       Upload, Select, Configure, Done
+│   └── components/    UI components; ui/ holds shadcn/ui primitives
+├── server/            Express API and hosted MCP runtime
+│   ├── routes/        upload, generate, host, hosted MCP endpoint
+│   ├── services/      parsing, format conversion, SSRF guard, generation
+│   └── templates/     Handlebars templates of the generated server
+└── shared/            Types and Zod schemas shared by client and server
+scripts/               Real-world corpus check, token calibration, production smoke test
+docs/                  Reference documentation
+```
+
+</details>
+
+## Documentation
+
+| Document | Content |
+|---|---|
+| [API reference](docs/API.md) | Every route, request and response shapes, error codes, limits |
+| [Configuration](docs/configuration.md) | Environment variables, production run, self-hosting the generated kit |
+| [Generated server](docs/mcp-template.md) | How a selection becomes an MCP server: templates, tool naming, input schemas |
+| [Token estimator](docs/token-estimator.md) | How the context cost is computed and calibrated |
 
 ## Status
 
@@ -67,7 +124,6 @@ Functional, not yet deployed.
 
 Next: public hosted instance.
 
-Product specification: [docs/spec.md](docs/spec.md).
 
 ## License
 
