@@ -197,6 +197,6 @@ SLICE/
 
 ## Liens utiles
 
-- Spec produit complète : [docs/spec.md](docs/spec.md)
+- Documentation publique : `docs/` (la spec MVP de mai 2026 est dans l historique git)
 - PRD validé : [.workflow/PRD.md](.workflow/PRD.md)
 - Règles projet : `.claude/rules/` (workflow FORGE retiré le 2026-08-27 ; circuit de développement : dépôt `AlanZien/pilot`)
