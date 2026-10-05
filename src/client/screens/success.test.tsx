@@ -121,7 +121,7 @@ describe('<SuccessScreen />', () => {
       setupWithExpiry('2026-07-25T20:00:00.000Z');
       expect(screen.getByText(/stays live until/i)).toBeInTheDocument();
       const cta = screen.getByRole('link', { name: /permanent plan/i });
-      expect(cta.getAttribute('href')).toMatch(/^mailto:/);
+      expect(cta.getAttribute('href')).toMatch(/^mailto:contact@giveme5xxxxx\.fr\?/);
     });
 
     it('hides the expiry line when expiresAt is null (no TTL)', () => {
