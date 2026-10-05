@@ -1,103 +1,132 @@
-# SLICE — Curated MCP Servers for AI Agents
+# SLICE
 
-Générateur web qui transforme une spec d'API en serveur MCP (Model Context Protocol) sur-mesure. Sélectionne uniquement les endpoints à exposer à ton agent IA, télécharge le code prêt à l'emploi.
+**Turn any API description into an MCP server that exposes only the endpoints your AI agent is allowed to call.**
 
-## Pourquoi SLICE
+[![Project Status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![CI](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml/badge.svg)](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml)
+[![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE.md)
+[Case study](https://cedricgicquiaud.github.io/projets/slice/)
 
-- **Réduction du contexte agent de 60-80%** vs. exposer toute l'API
-- **Sécurité** : whitelist explicite des endpoints (l'agent ne peut pas appeler ce que tu n'as pas autorisé)
-- **Zéro code à écrire** : upload spec → coche endpoints → télécharge MCP
-- **Marche partout** : Claude Desktop, Cursor, Windsurf, n8n, Airia (transports stdio + HTTP Streamable)
+![Endpoint selection: tick what the agent may call](docs/screenshots/2-select.png)
 
-## Formats acceptés
+## Overview
 
-SLICE détecte et convertit silencieusement les formats sources suivants :
-- **OpenAPI 3.0 / 3.1** — utilisé tel quel
-- **Swagger 2.0** — converti automatiquement vers OpenAPI 3.0
-- **Postman Collection v2.x** — convertie automatiquement vers OpenAPI 3.0
+AI agents (Claude, Cursor, n8n…) reach external APIs through MCP connectors. Exposing a whole API to an agent
+grants it too much power and floods its context: an agent that only reads orders has no reason to be able to
+delete them. Existing generators target developers (CLI, config files).
 
-## Stack
+SLICE is a web service: upload an API description, tick the endpoints the agent may call, and get a connector.
+Anything left unticked does not exist for the agent.
 
-- **Front** : React 19 + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui
-- **Back** : Node.js + Express + TypeScript (monolithe, sert front statique + API)
-- **Code MCP généré** : `@modelcontextprotocol/sdk` (TypeScript)
-- **Tests** : Vitest + Testing Library
-- **Package manager** : pnpm
+| Upload | Configure |
+|---|---|
+| ![Upload an API description](docs/screenshots/1-upload.png) | ![Name, upstream auth and hosting, with the context saved](docs/screenshots/3-configure.png) |
 
-## Prérequis
+## Features
 
-- Node.js >= 20 (LTS recommandé)
-- pnpm >= 9 (`npm install -g pnpm`)
+- **Least privilege by construction** — the generated server exposes the selected endpoints only.
+- **Three input formats**, detected automatically:
 
-## Installation
+  | Format | Versions | Handling |
+  |---|---|---|
+  | OpenAPI | 3.0, 3.1 | Used as is |
+  | Swagger | 2.0 | Converted to OpenAPI 3.0 |
+  | Postman Collection | v2.x | Converted to OpenAPI 3.0 |
+
+- **Two delivery modes** — download the generated TypeScript server, or use a hosted URL to paste into the agent.
+- **Upstream authentication** — OAuth2 client credentials, bearer token, API key. In hosted mode the user's token
+  is relayed, never stored.
+- **Works with any MCP client** — stdio and Streamable HTTP transports.
+
+## Getting started
+
+Requires Node.js 22+ and pnpm 9+. No API key needed.
 
 ```bash
-git clone <url-repo>
-cd SLICE
-pnpm install
+git clone https://github.com/cedricgicquiaud/slice.git
+cd slice && pnpm install
+pnpm dev        # http://localhost:5173
 ```
 
-## Commandes principales
+`pnpm test` runs the test suite; `pnpm build && pnpm start` runs the production build.
 
-```bash
-# Développement (front + back en parallèle, hot reload)
-pnpm dev
+## Architecture
 
-# Front seul (Vite, port 5173)
-pnpm dev:client
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![React 19](https://img.shields.io/badge/React_19-20232A?logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS_v4-06B6D4?logo=tailwindcss&logoColor=white)
+![Express 5](https://img.shields.io/badge/Express_5-000000?logo=express&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3E67B1?logo=zod&logoColor=white)
+![MCP SDK](https://img.shields.io/badge/MCP_SDK-1F1F1F)
+![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
-# Back seul (Express, port 3001)
-pnpm dev:server
+A single Express server serves the React UI and the API. Generated servers are rendered from Handlebars templates on
+top of `@modelcontextprotocol/sdk`.
 
-# Build de production (front + back)
-pnpm build
-
-# Lancer en production (après build)
-pnpm start
-
-# Tests
-pnpm test          # une fois
-pnpm test:watch    # mode watch
-pnpm test:ui       # interface graphique Vitest
-
-# Vérification TypeScript
-pnpm typecheck
+```mermaid
+flowchart LR
+    A[API description<br/>file or URL] --> B[Format detection<br/>and conversion]
+    B --> C[Parser<br/>isolated child process]
+    C --> D[Endpoint selection<br/>in the UI]
+    D --> E{Delivery}
+    E -->|download| F[Ready-to-run kit<br/>TypeScript + Docker]
+    E -->|hosted| G[Hosted MCP URL<br/>token relayed, never stored]
 ```
 
-## Structure du projet
+Key decisions:
+- **Isolated parsing.** Some specs exhaust memory. Parsing runs in a child process with a timeout, a memory cap and
+  a concurrency limit: a malicious spec returns a clean error and the server stays up.
+- **Server-side re-parse.** The server never trusts the parsed spec sent back by the browser; it re-parses the raw
+  spec and filters the selection against its own result.
+- **Hosted mode over a desktop binary.** The first plan shipped an executable; unsigned binaries are blocked by
+  macOS Gatekeeper. The hosted mode serves several agent sessions in parallel instead.
+- **External data is JSON-encoded in generated code.** Rule adopted after a review found two code-injection paths
+  (token URL, OAuth scopes), both fixed.
+
+<details>
+<summary><strong>Project structure</strong></summary>
 
 ```
-SLICE/
-├── src/
-│   ├── client/              # Frontend React
-│   │   ├── components/      # Composants React
-│   │   │   └── ui/          # Composants shadcn/ui
-│   │   ├── hooks/           # Custom hooks
-│   │   ├── lib/             # Utils (cn, etc.)
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css        # Tailwind + shadcn theme
-│   ├── server/              # Backend Express
-│   │   ├── routes/          # Route handlers
-│   │   ├── services/        # Logique métier
-│   │   └── templates/       # Templates Handlebars (code MCP généré)
-│   └── shared/              # Code partagé front/back (types, schémas Zod)
-├── public/                  # Assets statiques
-├── docs/                    # Documentation interne
-├── .workflow/               # Fichiers du workflow FORGE (PRD, SPEC, etc.)
-└── dist/                    # Output de build
+src/
+├── client/            React UI
+│   ├── screens/       Upload, Select, Configure, Done
+│   └── components/    UI components; ui/ holds shadcn/ui primitives
+├── server/            Express API and hosted MCP runtime
+│   ├── routes/        upload, generate, host, hosted MCP endpoint
+│   ├── services/      parsing, format conversion, SSRF guard, generation
+│   └── templates/     Handlebars templates of the generated server
+└── shared/            Types and Zod schemas shared by client and server
+scripts/               Real-world corpus check, token calibration, production smoke test
+docs/                  Reference documentation
 ```
+
+</details>
 
 ## Documentation
 
-- **Spec produit complète** : [SLICE.md](SLICE.md)
-- **PRD validé** : [.workflow/PRD.md](.workflow/PRD.md)
-- **API backend** : [docs/API.md](docs/API.md)
+| Document | Content |
+|---|---|
+| [API reference](docs/API.md) | Every route, request and response shapes, error codes, limits |
+| [Configuration](docs/configuration.md) | Environment variables, production run, self-hosting the generated kit |
+| [Generated server](docs/mcp-template.md) | How a selection becomes an MCP server: templates, tool naming, input schemas |
+| [Token estimator](docs/token-estimator.md) | How the context cost is computed and calibrated |
 
-## Statut
+## Status
 
-🏗️ En cours de développement (phase BOOTSTRAP terminée — la suite : SPEC technique).
+Functional, not yet deployed.
 
-## Licence
+- 556 automated tests, strict typing, CI on every pull request.
+- 500 real public API descriptions run through the pipeline: 412 converted, 83 rejected cleanly, 5 too large,
+  0 crashes (`corpus` workflow, on demand).
+- Verified end to end in Claude Desktop against the Notion API.
 
-MIT
+Next: public hosted instance.
+
+
+## License
+
+[Functional Source License 1.1, MIT Future License](LICENSE.md): free to read, use internally, modify and
+redistribute for any purpose other than a competing commercial product or service. Each version becomes MIT two
+years after its release.

@@ -1,82 +1,83 @@
 # Token estimator
 
-SLICE displays a *"Context saved"* percentage in the selection sidebar so the
-user understands how much agent context they're sparing by picking a subset
-of endpoints instead of exposing the full spec. This document explains how
-that number is computed, how the formula was calibrated, and the bounds we
-guarantee.
+SLICE shows a "context saved" percentage while the user selects endpoints (selection preview, configuration screen
+and success screen). It tells the user how much agent context they spare by exposing a subset of endpoints instead
+of the whole API. This document explains how the number is computed, how the formula was calibrated, and its limits.
 
-## Where the number comes from
+## Formula
 
-For each endpoint, we estimate the tokens that endpoint contributes to the
-final MCP tool declaration (name + description + Zod input schema). The
-estimate is a closed-form heuristic — no model call, no async work — so the
-sidebar can update on every checkbox toggle without lag.
+For each endpoint, SLICE estimates the tokens it contributes to the MCP tool declaration
+(name, description and Zod input schema). The estimate is a closed-form heuristic with no model call and no
+asynchronous work, so the percentage updates on every checkbox toggle.
 
 ```
-endpointTokens(ep) = 25 + 20 × params + ⌈description.length / 5⌉
+endpointTokens(ep) = 25 + 20 × params + ⌈text.length / 5⌉
 ```
 
-- `25` — base cost: tool boilerplate (`server.tool(...)`, async handler skeleton)
-- `20 × params` — each `z.string().optional().describe(...)` runs ~20 tokens
-- `⌈len / 5⌉` — typical English/code ratio under `cl100k_base`
+- `25`: base cost of the tool boilerplate (`server.tool(...)` and the handler skeleton).
+- `20 × params`: each parameter entry (`z.string().optional().describe(...)`) costs about 20 tokens.
+  `params` counts every parameter, including flattened request-body fields.
+- `⌈text.length / 5⌉`: `text` is the endpoint description, or its label when there is no description;
+  about 5 characters per token for English and code under `cl100k_base`.
 
-The "real" reference is the tiktoken `cl100k_base` count on the exact MCP
-tool source we'd emit. We don't compare against arbitrary spec text —
-that would calibrate the wrong thing.
+```
+saved % = round((1 − selectedTokens / totalTokens) × 100)
+```
 
-## Calibration (phase 05)
+`totalTokens` sums every endpoint of the spec, `selectedTokens` only the selected ones. An empty spec reports 100%.
 
-Coefficients were tuned by grid search against four fixtures of increasing
-size, then frozen in `src/shared/token-estimator.ts`.
+The implementation is `src/shared/token-estimator.ts` (`estimateEndpointTokens`, `estimateSpecTokens`,
+`computeEconomy`). It is shared code and runs in the browser.
 
-| Fixture | Endpoints | Real tokens (tiktoken) | Estimate | Deviation |
+## Calibration
+
+The reference is the `cl100k_base` token count (via `js-tiktoken`) of a rendered tool declaration for each endpoint:
+`server.tool(<id>, <description, at most 500 characters>, { <one Zod line per parameter> }, handler)`.
+SLICE calibrates against this rendered declaration, not against the raw spec text, which would measure the wrong thing.
+
+The three coefficients were chosen by grid search over the four fixtures in `fixtures/calibration/`
+(`base` from 20 to 80 in steps of 5, `perParam` from 0 to 20 in steps of 1, `charsPerToken` from 2 to 6 in steps of 0.25),
+keeping the set with the smallest worst-case deviation.
+
+| Fixture | Endpoints | Reference tokens | Estimate | Deviation |
 |---|---:|---:|---:|---:|
 | `custom-10.yaml` | 10 | 885 | 877 | −0.9% |
-| `shopify-50.yaml` | 50 | 2270 | 2226 | −1.9% |
-| `github-100.yaml` | 100 | 11243 | 11087 | −1.4% |
-| `stripe-200.yaml` | 200 | 22063 | 22631 | +2.6% |
+| `shopify-50.yaml` | 50 | 2 270 | 2 226 | −1.9% |
+| `github-100.yaml` | 100 | 11 243 | 11 087 | −1.4% |
+| `stripe-200.yaml` | 200 | 22 063 | 22 631 | +2.6% |
 
-**Worst-case deviation: 2.6%** — well within the **±15% SPEC R1.2.8 budget**.
+Worst-case deviation: 2.6%, against a tolerance of ±15%.
 
-### How to re-run
+### Re-running the calibration
 
 ```bash
 pnpm tsx scripts/calibrate-tokens.ts
 ```
 
-The script reloads every file in `fixtures/calibration/`, grid-searches the
-coefficient space (base ∈ 20..80, perParam ∈ 0..20, charsPerToken ∈ 2..6),
-prints the best per-fixture deviations and exits non-zero if the chosen
-coefficients miss ±15%.
+The script parses every fixture in `fixtures/calibration/`, runs the grid search, prints the best coefficients and the
+per-fixture deviation, and exits with a non-zero code if the best set misses ±15%. It does not modify the source:
+new coefficients have to be copied into `src/shared/token-estimator.ts` by hand.
 
-### CI guard
+### Test guard
 
-`src/server/services/token-estimator.calibration.test.ts` re-checks the
-deviation in CI. If anyone tweaks the parser shape, the normalizer, or the
-coefficients themselves in a way that pushes any fixture over ±15%, the
-build fails. The offline script (`calibrate-tokens.ts`) is then the place to
-re-tune.
+`src/server/services/token-estimator.calibration.test.ts` runs in the normal test suite (`pnpm test`).
+It checks that the frozen coefficients stay within ±15% of the reference on each calibration fixture.
+A change to the parser, the normaliser or the coefficients that pushes any fixture past the tolerance fails the build;
+the script above is then the place to re-tune.
 
 ## Limits
 
-- **English-only bias**: `cl100k_base` is slightly less efficient on Asian
-  scripts and accented Latin. Specs with mostly French/Spanish descriptions
-  may skew a couple percent higher; still well inside the budget on the
-  Shopify fixture (which has accent-light English content).
-- **Tool-name length is fixed**: the calibration assumes the MCP tool name
-  is `${METHOD} ${path}` (~10–40 chars). Very long custom paths or hashed
-  operationIds may diverge.
-- **No fudge for nested schemas**: today the formula doesn't read `requestBody`
-  shape. Phase 04 (parser) doesn't expose it yet. When phase 06 wires
-  `requestBody`, the per-param coefficient will need to be re-checked — the
-  CI calibration test will catch regressions.
-- **Heuristic, not promise**: 2.6% on synthetic fixtures doesn't guarantee
-  2.6% on every real-world spec. The 15% bound is what's contractual.
+- **English bias.** `cl100k_base` is less efficient on non-Latin scripts and accented text. Specs with descriptions
+  mostly in other languages may come out a few percent higher.
+- **Reference tool name.** The reference declaration uses the endpoint id (`"GET /products"`) as the tool name,
+  whereas the generated server uses the snake_case label (`list_products`). Both are short strings; very long paths or
+  labels can make the two diverge.
+- **Nested schemas are not weighted.** Every parameter costs the same, whether it is a scalar or a deeply nested object
+  body field. Endpoints with large structured request bodies can be under-estimated.
+- **Heuristic, not a promise.** 2.6% on four fixtures does not guarantee 2.6% on every real-world spec.
+  The ±15% bound is what the test suite enforces, and only on the calibration fixtures.
 
-## When to escalate
+## If the tolerance is exceeded
 
-If a future fixture pushes any deviation past 15%, SPEC R1.2.8 says we
-escalate: change strategy (e.g. expose a server-side `/api/tokens-estimate`
-endpoint that runs tiktoken on demand) rather than tweak coefficients in
-ways that overfit the calibration set.
+If a new fixture pushes the deviation past 15%, change the approach rather than over-fitting the coefficients to the
+calibration set: for example, count tokens on the server with a real tokenizer.
