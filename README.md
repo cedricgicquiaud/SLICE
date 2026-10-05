@@ -1,103 +1,74 @@
-# SLICE — Curated MCP Servers for AI Agents
+# SLICE
 
-Générateur web qui transforme une spec d'API en serveur MCP (Model Context Protocol) sur-mesure. Sélectionne uniquement les endpoints à exposer à ton agent IA, télécharge le code prêt à l'emploi.
+**Turn any API description into an MCP server that exposes only the endpoints your AI agent is allowed to call.**
 
-## Pourquoi SLICE
+[![Project Status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![CI](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml/badge.svg)](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[Case study](https://cedricgicquiaud.github.io/projets/slice/)
 
-- **Réduction du contexte agent de 60-80%** vs. exposer toute l'API
-- **Sécurité** : whitelist explicite des endpoints (l'agent ne peut pas appeler ce que tu n'as pas autorisé)
-- **Zéro code à écrire** : upload spec → coche endpoints → télécharge MCP
-- **Marche partout** : Claude Desktop, Cursor, Windsurf, n8n, Airia (transports stdio + HTTP Streamable)
+![Endpoint selection: tick what the agent may call](docs/screenshots/2-select.png)
 
-## Formats acceptés
+## Overview
 
-SLICE détecte et convertit silencieusement les formats sources suivants :
-- **OpenAPI 3.0 / 3.1** — utilisé tel quel
-- **Swagger 2.0** — converti automatiquement vers OpenAPI 3.0
-- **Postman Collection v2.x** — convertie automatiquement vers OpenAPI 3.0
+AI agents (Claude, Cursor, n8n…) reach external APIs through MCP connectors. Exposing a whole API to an agent
+grants it too much power and floods its context: an agent that only reads orders has no reason to be able to
+delete them. Existing generators target developers (CLI, config files).
 
-## Stack
+SLICE is a web service: upload an API description, tick the endpoints the agent may call, and get a connector.
+Anything left unticked does not exist for the agent.
 
-- **Front** : React 19 + Vite + TypeScript + Tailwind CSS v4 + shadcn/ui
-- **Back** : Node.js + Express + TypeScript (monolithe, sert front statique + API)
-- **Code MCP généré** : `@modelcontextprotocol/sdk` (TypeScript)
-- **Tests** : Vitest + Testing Library
-- **Package manager** : pnpm
+| Upload | Configure |
+|---|---|
+| ![Upload an API description](docs/screenshots/1-upload.png) | ![Name, upstream auth and hosting, with the context saved](docs/screenshots/3-configure.png) |
 
-## Prérequis
+## Features
 
-- Node.js >= 20 (LTS recommandé)
-- pnpm >= 9 (`npm install -g pnpm`)
+- **Least privilege by construction** — the generated server exposes the selected endpoints only.
+- **Three input formats** — OpenAPI 3.0/3.1 as is; Swagger 2.0 and Postman v2.x converted automatically.
+- **Two delivery modes** — download the generated TypeScript server, or use a hosted URL to paste into the agent.
+- **Upstream authentication** — OAuth2 client credentials, bearer token, API key. In hosted mode the user's token
+  is relayed, never stored.
+- **Works with any MCP client** — stdio and Streamable HTTP transports.
 
-## Installation
+## Getting started
 
-```bash
-git clone <url-repo>
-cd SLICE
-pnpm install
-```
-
-## Commandes principales
+Requires Node.js 22+ and pnpm 9+. No API key needed.
 
 ```bash
-# Développement (front + back en parallèle, hot reload)
-pnpm dev
-
-# Front seul (Vite, port 5173)
-pnpm dev:client
-
-# Back seul (Express, port 3001)
-pnpm dev:server
-
-# Build de production (front + back)
-pnpm build
-
-# Lancer en production (après build)
-pnpm start
-
-# Tests
-pnpm test          # une fois
-pnpm test:watch    # mode watch
-pnpm test:ui       # interface graphique Vitest
-
-# Vérification TypeScript
-pnpm typecheck
+git clone https://github.com/cedricgicquiaud/slice.git
+cd slice && pnpm install
+pnpm dev        # http://localhost:5173
 ```
 
-## Structure du projet
+`pnpm test` runs the test suite; `pnpm build && pnpm start` runs the production build.
 
-```
-SLICE/
-├── src/
-│   ├── client/              # Frontend React
-│   │   ├── components/      # Composants React
-│   │   │   └── ui/          # Composants shadcn/ui
-│   │   ├── hooks/           # Custom hooks
-│   │   ├── lib/             # Utils (cn, etc.)
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css        # Tailwind + shadcn theme
-│   ├── server/              # Backend Express
-│   │   ├── routes/          # Route handlers
-│   │   ├── services/        # Logique métier
-│   │   └── templates/       # Templates Handlebars (code MCP généré)
-│   └── shared/              # Code partagé front/back (types, schémas Zod)
-├── public/                  # Assets statiques
-├── docs/                    # Documentation interne
-├── .workflow/               # Fichiers du workflow FORGE (PRD, SPEC, etc.)
-└── dist/                    # Output de build
-```
+## Architecture
 
-## Documentation
+TypeScript monolith: React 19 + Vite front end, Express back end serving both the UI and the API, generated code
+built on `@modelcontextprotocol/sdk`.
 
-- **Spec produit complète** : [SLICE.md](SLICE.md)
-- **PRD validé** : [.workflow/PRD.md](.workflow/PRD.md)
-- **API backend** : [docs/API.md](docs/API.md)
+Key decisions:
+- **Isolated parsing.** Some specs exhaust memory. Parsing runs in a child process with a timeout, a memory cap and
+  a concurrency limit: a malicious spec returns a clean error and the server stays up.
+- **Hosted mode over a desktop binary.** The first plan shipped an executable; unsigned binaries are blocked by
+  macOS Gatekeeper. The hosted mode serves several agent sessions in parallel instead.
+- **External data is JSON-encoded in generated code.** Rule adopted after a review found two code-injection paths
+  (token URL, OAuth scopes), both fixed.
 
-## Statut
+## Status
 
-🏗️ En cours de développement (phase BOOTSTRAP terminée — la suite : SPEC technique).
+Functional, not yet deployed.
 
-## Licence
+- 556 automated tests, strict typing, CI on every pull request.
+- 500 real public API descriptions run through the pipeline: 412 converted, 83 rejected cleanly, 5 too large,
+  0 crashes (`corpus` workflow, on demand).
+- Verified end to end in Claude Desktop against the Notion API.
+
+Next: public hosted instance.
+
+Product specification: [docs/spec.md](docs/spec.md).
+
+## License
 
 MIT
