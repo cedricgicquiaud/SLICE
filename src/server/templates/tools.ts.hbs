@@ -9,13 +9,13 @@ import { call } from './http-client.js';
 export function registerTools(server: McpServer): void {
 {{#each tools}}
   server.tool(
-    '{{name}}',
-    '{{description}}',
+    {{{nameJson}}},
+    {{{descriptionJson}}},
     {{{inputSchema}}},
     async (args: Record<string, unknown>) => {
       const result = await call({
-        method: '{{method}}',
-        path: '{{path}}',
+        method: {{{methodJson}}},
+        path: {{{pathJson}}},
         {{#if hasPathParams}}pathParams: { {{pathParamsExpr}} },{{/if}}
         {{#if hasQuery}}query: { {{queryExpr}} },{{/if}}
         {{#if hasBody}}body: {{#if bodyFallback}}{{{bodyExpr}}}{{else}}{ {{{bodyExpr}}} }{{/if}},{{/if}}
