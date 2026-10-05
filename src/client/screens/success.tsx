@@ -33,7 +33,7 @@ export interface SuccessScreenProps {
 }
 
 const PERMANENT_PLAN_MAILTO =
-  'mailto:maisonepigenetic@gmail.com?subject=SLICE%20%E2%80%94%20permanent%20hosting';
+  'mailto:contact@giveme5xxxxx.fr?subject=SLICE%20%E2%80%94%20permanent%20hosting';
 
 export function SuccessScreen({
   config,
