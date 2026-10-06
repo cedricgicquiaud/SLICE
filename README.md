@@ -5,7 +5,6 @@
 [![Project Status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 [![CI](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml/badge.svg)](https://github.com/cedricgicquiaud/slice/actions/workflows/ci.yml)
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/license-FSL--1.1--MIT-blue.svg)](LICENSE.md)
-[Case study](https://cedricgicquiaud.github.io/projets/slice/)
 
 ![Endpoint selection: tick what the agent may call](docs/screenshots/2-select.png)
 
